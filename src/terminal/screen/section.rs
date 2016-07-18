@@ -3,22 +3,21 @@ use std::ops::Index;
 
 use datatypes::{Region, Coords, CoordsIter, SaveGrid, SplitKind, ResizeRule};
 use datatypes::SplitKind::*;
-use terminal::{CharGrid, CharCell};
 
-use super::GridFill;
+use super::FillPanel;
 use super::panel::Panel;
 use super::panel::Panel::*;
 use super::ring::Ring;
 
 /// A (rectangular) section of the screen, which contains a ring of panels.
 #[derive(Debug, Eq, PartialEq)]
-pub struct ScreenSection<T=CharGrid> where T: GridFill {
+pub struct ScreenSection<T> where T: FillPanel {
     tag: u64,
     area: Region,
     ring: Ring<Panel<T>>,
 }
 
-impl<T: GridFill> ScreenSection<T> {
+impl<T: FillPanel> ScreenSection<T> {
 
     /// Construct a new ScreenSection with a given tag for this area of the screen. It will be
     /// filled with an empty grid.
@@ -181,12 +180,8 @@ impl<T: GridFill> ScreenSection<T> {
         self.ring.rotate_up();
     }
 
-}
-
-impl ScreenSection {
-
     /// Iterate over all of the cells in this section of the screen.
-    pub fn cells(&self) -> super::Cells {
+    pub fn cells(&self) -> super::Cells<T> {
         super::Cells {
             iter: CoordsIter::from_region(self.area),
             section: self,
@@ -194,7 +189,7 @@ impl ScreenSection {
     }
 
     /// Iterate over all of the visible leaf panels in this section of the screen.
-    pub fn panels(&self) -> super::Panels {
+    pub fn panels(&self) -> super::Panels<T> {
         super::Panels {
             stack: vec![self],
         }
@@ -202,9 +197,9 @@ impl ScreenSection {
 
 }
 
-impl Index<Coords> for ScreenSection {
-    type Output = CharCell;
-    fn index(&self, Coords { x, y }: Coords) -> &CharCell {
+impl<T: FillPanel> Index<Coords> for ScreenSection<T> {
+    type Output = T::Output;
+    fn index(&self, Coords { x, y }: Coords) -> &T::Output {
         match self.ring.top {
             Grid(ref grid) => &grid[Coords { x: x, y: y }],
             Split { kind: Horizontal(n), ref left, .. } if y < n    => {
@@ -229,23 +224,22 @@ mod tests {
     use std::fmt::Debug;
 
     use super::*;
-    use super::super::GridFill;
+    use super::super::FillPanel;
     use super::super::panel::Panel::*;
     use super::super::ring::Ring;
 
     use datatypes::{Region, CoordsIter, SaveGrid, SplitKind, ResizeRule};
     use datatypes::SplitKind::*;
-    use terminal::CharGrid;
 
-    fn grid_section<T: GridFill>() -> ScreenSection<T> {
+    fn grid_section() -> ScreenSection<Region> {
         ScreenSection {
             tag: 0,
             area: Region::new(0, 0, 8, 8),
-            ring: Ring::new(Grid(T::new(8, 8, false))),
+            ring: Ring::new(Grid(<Region as FillPanel>::new(8, 8, false))),
         }
     }
 
-    fn split_section<T: GridFill>() -> ScreenSection<T> {
+    fn split_section() -> ScreenSection<Region> {
         ScreenSection {
             tag: 0,
             area: Region::new(0, 0, 8, 8),
@@ -257,7 +251,7 @@ mod tests {
         }
     }
 
-    fn ring_section<T: GridFill>() -> ScreenSection<T> {
+    fn ring_section() -> ScreenSection<Region> {
         let mut section = split_section();
         section.push(false);
         section
@@ -272,12 +266,12 @@ mod tests {
 
     #[test]
     fn new() {
-        assert_eq!(grid_section::<Region>(), ScreenSection::new(0, Region::new(0, 0, 8, 8), true));
+        assert_eq!(grid_section(), ScreenSection::new(0, Region::new(0, 0, 8, 8), true));
     }
 
     #[test]
     fn with_data() {
-        assert_eq!(split_section::<Region>(), ScreenSection::with_data(0, Region::new(0, 0, 8, 8),
+        assert_eq!(split_section(), ScreenSection::with_data(0, Region::new(0, 0, 8, 8),
         Split {
             kind: Vertical(4),
             left: Box::new(ScreenSection::new(1, Region::new(0, 0, 4, 8), false)),
@@ -316,24 +310,24 @@ mod tests {
 
     #[test]
     fn grid() {
-        assert_eq!(*grid_section::<Region>().grid(), Region::new(0, 0, 8, 8));
+        assert_eq!(*grid_section().grid(), Region::new(0, 0, 8, 8));
     }
 
     #[test]
     #[should_panic]
     fn grid_on_split() {
-        split_section::<Region>().grid();
+        split_section().grid();
     }
 
     #[test]
     fn grid_mut() {
-        assert_eq!(*grid_section::<Region>().grid_mut(), Region::new(0, 0, 8, 8));
+        assert_eq!(*grid_section().grid_mut(), Region::new(0, 0, 8, 8));
     }
 
     #[test]
     #[should_panic]
     fn grid_mut_on_split() {
-        split_section::<Region>().grid_mut();
+        split_section().grid_mut();
     }
 
     #[test]
@@ -477,18 +471,18 @@ mod tests {
     #[test]
     fn unsplit_save_left() {
         run_test(|mut section| { section.unsplit(SaveGrid::Left); section }, [
-            grid_section::<Region>(),
-            grid_section::<Region>(),
-            ring_section::<Region>(),
+            grid_section(),
+            grid_section(),
+            ring_section(),
         ]);
     }
 
     #[test]
     fn unsplit_save_right() {
         run_test(|mut section| { section.unsplit(SaveGrid::Right); section }, [
-            grid_section::<Region>(),
-            grid_section::<Region>(),
-            ring_section::<Region>(),
+            grid_section(),
+            grid_section(),
+            ring_section(),
         ]);
     }
 
@@ -498,7 +492,7 @@ mod tests {
             section.adjust_split(Horizontal(4), ResizeRule::Percentage);
             section
         }, [
-            grid_section::<Region>(),
+            grid_section(),
             ScreenSection {
                 tag: 0,
                 area: Region::new(0, 0, 8, 8),
@@ -508,7 +502,7 @@ mod tests {
                     right: Box::new(ScreenSection::new(2, Region::new(0, 4, 8, 8), false)),
                 }),
             },
-            ring_section::<Region>(),
+            ring_section(),
         ]);
     }
 
@@ -524,15 +518,15 @@ mod tests {
     #[test]
     fn pop() {
         run_test(|mut section| { section.pop(); section }, [
-            grid_section::<Region>(),
-            split_section::<Region>(),
-            split_section::<Region>(),
+            grid_section(),
+            split_section(),
+            split_section(),
         ]);
     }
 
     #[test]
     fn index() {
-        for section in &[grid_section::<CharGrid>(), split_section(), ring_section()] {
+        for section in &[grid_section(), split_section(), ring_section()] {
             let cells = CoordsIter::from_region(Region::new(0, 0, 8, 8))
                             .map(|coords| &section[coords]).collect::<Vec<_>>();
             assert_eq!(cells.len(), 64);

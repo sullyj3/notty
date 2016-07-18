@@ -2,14 +2,12 @@ use datatypes::{Region, SplitKind, ResizeRule};
 use datatypes::SplitKind::*;
 use datatypes::ResizeRule::*;
 
-use terminal::CharGrid;
-
-use super::GridFill;
+use super::FillPanel;
 use super::section::ScreenSection;
 use self::Panel::*;
 
 #[derive(Debug, Eq, PartialEq)]
-pub enum Panel<T=CharGrid> where T: GridFill {
+pub enum Panel<T> where T: FillPanel {
     Grid(T),
     Split {
         kind: SplitKind,
@@ -19,7 +17,7 @@ pub enum Panel<T=CharGrid> where T: GridFill {
     DeadGrid,
 }
 
-impl<T: GridFill> Panel<T> {
+impl<T: FillPanel> Panel<T> {
 
     pub fn is_grid(&self) -> bool {
         if let Grid(_) = *self { true } else { false }
@@ -77,7 +75,7 @@ mod tests {
 
     use datatypes::{Region, SplitKind, ResizeRule};
     use datatypes::ResizeRule::*;
-    use super::super::GridFill;
+    use super::super::FillPanel;
     use super::super::section::ScreenSection;
     use super::*;
     use super::Panel::*;

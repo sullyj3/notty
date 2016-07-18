@@ -1,7 +1,7 @@
-use std::ops::{Deref, DerefMut};
+use std::ops::{Deref, DerefMut, Index};
 
-use datatypes::{Region, SaveGrid, SplitKind, ResizeRule};
-use terminal::char_grid::CharGrid;
+use datatypes::{Coords, Region, SaveGrid, SplitKind, ResizeRule};
+use terminal::Window;
 
 mod panel;
 mod section;
@@ -14,33 +14,33 @@ use self::section::ScreenSection;
 
 const E_ACTIVE: &'static str = "Active screen section must exist.";
 
-pub trait GridFill {
+pub trait FillPanel: Index<Coords> {
     fn new(u32, u32, bool) -> Self;
     fn resize(&mut self, Region);
 }
 
-impl GridFill for CharGrid {
-    fn new(width: u32, height: u32, expand: bool) -> CharGrid {
-        CharGrid::new(width, height, expand)
+impl FillPanel for Window {
+    fn new(width: u32, height: u32, expand: bool) -> Window {
+        Window::reflowable(width, height, expand)
     }
     fn resize(&mut self, area: Region) { self.resize_window(area); }
 }
 
-impl GridFill for Region {
+impl FillPanel for Region {
     fn new(width: u32, height: u32, _: bool) -> Region {
         Region::new(0, 0, width, height)
     }
     fn resize(&mut self, area: Region) { *self = Region::new(0, 0, area.width(), area.height()) }
 }
 
-pub struct Screen {
+pub struct Screen<T=Window> where T: FillPanel {
     active: u64,
-    screen: ScreenSection,
+    screen: ScreenSection<T>,
 }
 
-impl Screen {
+impl<T: FillPanel> Screen<T> {
 
-    pub fn new(width: u32, height: u32) -> Screen {
+    pub fn new(width: u32, height: u32) -> Screen<T> {
         Screen {
             active: 0,
             screen: ScreenSection::new(0, Region::new(0, 0, width, height), true),
@@ -102,33 +102,33 @@ impl Screen {
         self.find_mut(tag).map(ScreenSection::rotate_up);
     }
 
-    pub fn cells(&self) -> Cells {
+    pub fn cells(&self) -> Cells<T> {
         self.screen.cells()
     }
 
-    pub fn panels(&self) -> Panels {
+    pub fn panels(&self) -> Panels<T> {
         self.screen.panels()
     }
 
-    fn find(&self, tag: Option<u64>) -> Option<&ScreenSection> {
+    fn find(&self, tag: Option<u64>) -> Option<&ScreenSection<T>> {
         self.screen.find(tag.unwrap_or(self.active))
     }
 
-    fn find_mut(&mut self, tag: Option<u64>) -> Option<&mut ScreenSection> {
+    fn find_mut(&mut self, tag: Option<u64>) -> Option<&mut ScreenSection<T>> {
         self.screen.find_mut(tag.unwrap_or(self.active))
     }
 
 }
 
-impl Deref for Screen {
-    type Target = CharGrid;
-    fn deref(&self) -> &CharGrid {
+impl<T: FillPanel> Deref for Screen<T> {
+    type Target = T;
+    fn deref(&self) -> &T {
         self.find(None).expect(E_ACTIVE).grid()
     }
 }
 
-impl DerefMut for Screen {
-    fn deref_mut(&mut self) -> &mut CharGrid {
+impl<T: FillPanel> DerefMut for Screen<T> {
+    fn deref_mut(&mut self) -> &mut T {
         self.find_mut(None).expect(E_ACTIVE).grid_mut()
     }
 }
