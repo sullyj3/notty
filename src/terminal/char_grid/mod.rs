@@ -13,6 +13,7 @@
 //  
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+use std::cmp;
 use std::collections::HashMap;
 use std::ops::Index;
 use std::sync::atomic::Ordering::Relaxed;
@@ -30,95 +31,96 @@ mod cursor;
 mod grid;
 mod styles;
 mod tooltip;
+mod window;
 
-pub use self::cell::{CharCell, CharData, ImageData};
+pub use self::cell::{CharCell, CharData, ImageData, EMPTY_CELL};
 pub use self::cursor::Cursor;
 pub use self::grid::Grid;
-pub use self::styles::{Styles, UseStyles};
+pub use self::styles::{Styles, UseStyles, DEFAULT_STYLES};
 pub use self::tooltip::Tooltip;
+pub use self::window::{Window, View};
+
+pub struct GridSettings {
+    pub view: View,
+    pub retain_offscreen_state: bool,
+}
 
 pub struct CharGrid {
     grid: Grid<CharCell>,
     cursor: Cursor,
+    window: Window,
     tooltips: HashMap<Coords, Tooltip>,
-    window: Region,
 }
 
 impl CharGrid {
-    pub fn new(width: u32, height: u32, retain_offscreen_state: bool) -> CharGrid {
-        let grid = match (retain_offscreen_state, SCROLLBACK.load(Relaxed)) {
-            (false, _) | (_, 0) => Grid::new(width as usize, height as usize),
-            (_, n) if n > 0     => Grid::with_y_cap(width as usize, height as usize, n as usize),
-            _                   => Grid::with_infinite_scroll(width as usize, height as usize),
+    pub fn new(width: u32, height: u32, settings: GridSettings) -> CharGrid {
+        let grid = match (settings.retain_offscreen_state, SCROLLBACK.load(Relaxed)) {
+            (false, _)          => Grid::with_x_y_caps(width as usize, height as usize),
+            (_, n) if n > 0     => Grid::with_y_cap(cmp::min(n as usize, height as usize)),
+            _                   => Grid::with_infinite_scroll(),
         };
         CharGrid {
             grid: grid,
             cursor: Cursor::new(),
             tooltips: HashMap::new(),
-            window: Region::new(0, 0, width, height),
+            window: Window::new(Coords { x: 0, y: 0 }, width, height, settings.view),
         }
     }
 
-    pub fn resize_window(&mut self, region: Region) {
-        if self.grid_width() < region.width() {
-            let n = (region.width() - self.grid_width()) * self.grid_height();
-            self.grid.add_to_right(vec![CharCell::default(); n as usize]);
-        }
-        if self.grid_height() < region.height() {
-            let n = (region.height() - self.grid_height()) * self.grid_width();
-            self.grid.add_to_bottom(vec![CharCell::default(); n as usize]);
-        }
-        self.window = Region {
-            right: self.window.left + region.width(),
-            bottom: self.window.top + region.height(),
-            ..self.window
-        };
+    pub fn resize_width(&mut self, width: u32) {
+        self.grid.guarantee_width(width as usize);
+        self.window.resize_width(width);
+    }
+
+    pub fn resize_height(&mut self, height: u32) {
+        self.grid.guarantee_height(height as usize);
+        self.window.resize_height(height);
     }
 
     pub fn write(&mut self, data: CellData) {
         match data {
             CellData::Char(c)       => {
                 let width = c.width().unwrap() as u32;
-                self.grid[self.cursor.coords] = CharCell::character(c, self.cursor.text_style);
-                let bounds = self.grid.bounds();
+                self.grid.write_at(self.cursor.coords, CharCell::character(c, self.cursor.text_style));
+                let bounds = self.window.bounds();
                 let mut coords = self.cursor.coords;
                 for _ in 1..width {
                     let next_coords = move_within(coords, To(Right, 1, false), bounds);
                     if next_coords == coords { break; } else { coords = next_coords; }
-                    self.grid[coords] = CharCell::extension(self.cursor.coords,
-                                                            self.cursor.text_style);
+                    self.grid.write_at(coords, CharCell::extension(self.cursor.coords,
+                                                                   self.cursor.text_style));
                 }
-                self.cursor.navigate(&mut self.grid, To(Right, 1, true));
+                self.move_cursor(To(Right, 1, true));
             }
             CellData::ExtensionChar(c)  => {
-                self.cursor.navigate(&mut self.grid, To(Left, 1, true));
-                if !self.grid[self.cursor.coords].extend_by(c) {
-                    self.cursor.navigate(&mut self.grid, To(Right, 1, true));
-                    self.grid[self.cursor.coords] = CharCell::character(c, self.cursor.text_style);
-                    self.cursor.navigate(&mut self.grid, To(Right, 1, true));
+                self.move_cursor(To(Left, 1, true));
+                if !self.grid.get_mut(self.cursor.coords).map_or(false, |cell| cell.extend_by(c)) {
+                    self.move_cursor(To(Right, 1, true));
+                    self.grid.write_at(self.cursor.coords, CharCell::character(c, self.cursor.text_style));
+                    self.move_cursor(To(Right, 1, true));
                 }
             }
             CellData::Image { pos, width, height, data, mime }   => {
                 let mut end = self.cursor.coords;
-                end = move_within(end, To(Right, width, false), self.grid.bounds());
-                end = move_within(end, To(Down, height, false), self.grid.bounds());
+                end = move_within(end, To(Right, width, false), self.window.bounds());
+                end = move_within(end, To(Down, height, false), self.window.bounds());
                 let mut iter = CoordsIter::from_area(CursorBound(end),
-                                                     self.cursor.coords, self.grid.bounds());
+                                                     self.cursor.coords, self.window.bounds());
                 if let Some(cu_coords) = iter.next() {
-                    self.grid[cu_coords] = CharCell::image(data, self.cursor.coords, mime, pos,
-                                                           width, height, self.cursor.text_style);
+                    self.grid.write_at(cu_coords, CharCell::image(data, self.cursor.coords, mime,
+                                                                  pos, width, height,
+                                                                  self.cursor.text_style));
                     for coords in iter {
-                        self.grid[coords] = CharCell::extension(cu_coords, self.cursor.text_style);
+                        self.grid.write_at(coords, CharCell::extension(cu_coords, self.cursor.text_style));
                     }
-                    self.cursor.navigate(&mut self.grid, To(Right, 1, true));
+                    self.move_cursor(To(Right, 1, true));
                 }
             }
         }
     }
 
     pub fn move_cursor(&mut self, movement: Movement) {
-        self.cursor.navigate(&mut self.grid, movement);
-        self.window = self.window.move_to_contain(self.cursor.coords);
+        self.cursor.navigate(&mut self.grid, self.window.bounds(), movement)
     }
 
     pub fn add_tooltip(&mut self, coords: Coords, tooltip: String) {
@@ -138,13 +140,13 @@ impl CharGrid {
     }
 
     pub fn erase(&mut self, area: Area) {
-        self.in_area(area, |grid, coords| grid[coords] = CharCell::default());
+        self.in_area(area, |grid, coords| grid.write_at(coords, CharCell::default()));
     }
 
     pub fn insert_blank_at(&mut self, n: u32) {
         let mut iter = CoordsIter::from_area(CursorTo(ToEdge(Right)),
                                              self.cursor.coords,
-                                             self.grid.bounds());
+                                             self.window.bounds());
         iter.next();
         for coords in iter.rev().skip(n as usize) {
             self.grid.moveover(coords, Coords {x: coords.x + n, y: coords.y});
@@ -197,11 +199,15 @@ impl CharGrid {
     }
 
     pub fn set_style_in_area(&mut self, area: Area, style: Style) {
-        self.in_area(area, |grid, coords| grid[coords].styles.update(style));
+        self.in_area(area, |grid, coords| {
+            grid.get_mut(coords).map(|cell| cell.styles.update(style));
+        });
     }
 
     pub fn reset_styles_in_area(&mut self, area: Area) {
-        self.in_area(area, |grid, coords| grid[coords].styles = UseStyles::default());
+        self.in_area(area, |grid, coords| {
+            grid.get_mut(coords).map(|cell| cell.styles = UseStyles::default());
+        });
     }
 
     pub fn cursor_position(&self) -> Coords {
@@ -216,9 +222,9 @@ impl CharGrid {
         CoordsIter::from_area(
             Area::CursorTo(Movement::Position(end)),
             start,
-            self.grid.bounds(),
+            self.window.bounds(),
         ).fold(String::new(), |s, coords| {
-            let cell_data = self.grid[coords].to_string();
+            let cell_data = self.grid.get(coords).map(CharCell::to_string).unwrap_or_else(String::new);
             if coords.x == 0 && !s.is_empty() { s + "\n" + &cell_data }
             else { s + &cell_data }
         })
@@ -241,7 +247,7 @@ impl CharGrid {
     }
 
     fn in_area<F>(&mut self, area: Area, f: F) where F: Fn(&mut Grid<CharCell>, Coords) {
-        for coords in CoordsIter::from_area(area, self.cursor.coords, self.grid.bounds()) {
+        for coords in CoordsIter::from_area(area, self.cursor.coords, self.window.bounds()) {
             f(&mut self.grid, coords);
         }
     }
@@ -258,10 +264,10 @@ impl<'a> IntoIterator for &'a CharGrid {
 
 impl Index<Coords> for CharGrid {
     type Output = CharCell;
-    fn index(&self, Coords {x, y}: Coords) -> &CharCell {
-        let coords = Coords { x: x + self.window.left, y: y + self.window.top };
-        assert!(self.window.contains(coords));
-        &self.grid[coords]
+    
+    fn index(&self, coords: Coords) -> &CharCell {
+        const DEFAULT: &'static CharCell = &EMPTY_CELL;
+        self.grid.get(coords).unwrap_or(DEFAULT)
     }
 }
 

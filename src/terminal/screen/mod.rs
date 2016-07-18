@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut, Index};
 
 use datatypes::{Coords, Region, SaveGrid, SplitKind, ResizeRule};
-use terminal::Window;
+use terminal::{CharGrid, GridSettings, View};
 
 mod panel;
 mod section;
@@ -19,11 +19,19 @@ pub trait FillPanel: Index<Coords> {
     fn resize(&mut self, Region);
 }
 
-impl FillPanel for Window {
-    fn new(width: u32, height: u32, expand: bool) -> Window {
-        Window::reflowable(width, height, expand)
+impl FillPanel for CharGrid {
+    fn new(width: u32, height: u32, expand: bool) -> CharGrid {
+        let settings = GridSettings {
+            retain_offscreen_state: expand,
+            view: View::Moveable,
+        };
+        CharGrid::new(width, height, settings)
     }
-    fn resize(&mut self, area: Region) { self.resize_window(area); }
+
+    fn resize(&mut self, area: Region) {
+        self.resize_width(area.width());
+        self.resize_height(area.height());
+    }
 }
 
 impl FillPanel for Region {
@@ -33,7 +41,7 @@ impl FillPanel for Region {
     fn resize(&mut self, area: Region) { *self = Region::new(0, 0, area.width(), area.height()) }
 }
 
-pub struct Screen<T=Window> where T: FillPanel {
+pub struct Screen<T=CharGrid> where T: FillPanel {
     active: u64,
     screen: ScreenSection<T>,
 }

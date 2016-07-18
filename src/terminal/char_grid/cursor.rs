@@ -13,7 +13,7 @@
 //
 //  You should have received a copy of the GNU Affero General Public License
 //  along with this program.  If not, see <http://www.gnu.org/licenses/>.
-use datatypes::{Coords, Movement, move_within};
+use datatypes::{Coords, Region, Movement, move_within};
 use datatypes::Direction::*;
 use datatypes::Movement::*;
 use terminal::{CharCell, CharData, Grid, Styles, UseStyles};
@@ -35,29 +35,11 @@ impl Cursor {
         }
     }
 
-    pub fn navigate(&mut self, grid: &mut Grid<CharCell>, movement: Movement) {
-        match movement {
-            IndexTo(Up, n) | PreviousLine(n) if n > self.coords.y => {
-                let n = n - self.coords.y;
-                grid.scroll(n as usize, Up);
-            }
-            IndexTo(Down, n) | NextLine(n) if self.coords.y + n >= grid.height as u32 => {
-                let n = self.coords.y + n - grid.height as u32 + 1;
-                grid.scroll(n as usize, Down);
-            }
-            IndexTo(Left, n) if n > self.coords.x => {
-                let n = n - self.coords.x;
-                grid.scroll(n as usize, Left);
-            }
-            IndexTo(Right, n) if self.coords.x + n >= grid.width as u32 => {
-                let n = self.coords.x + n - grid.width as u32 + 1;
-                grid.scroll(n as usize, Right);
-            }
-            _   => (),
-        }
-        let mut coords = move_within(self.coords, movement, grid.bounds());
+    // Move the cursor to a new position within the grid.
+    pub fn navigate(&mut self, grid: &mut Grid<CharCell>, bounds: Region, movement: Movement) {
+        let mut coords = move_within(self.coords, movement, bounds);
 
-        if let CharData::Extension(source) = grid[coords].content {
+        if let Some(&CharData::Extension(source)) = grid.get(coords).map(|cell| &cell.content) {
             match movement {
                 Position(_) => {
                     self.coords = source;
@@ -78,9 +60,9 @@ impl Cursor {
             match movement.direction(self.coords) {
                 Up | Left                   => self.coords = source,
                 dir @ Down | dir @ Right    => loop {
-                    let next_coords = move_within(coords, To(dir, 1, false), grid.bounds());
+                    let next_coords = move_within(coords, To(dir, 1, false), bounds);
                     if next_coords == coords { self.coords = source; return; }
-                    if let CharData::Extension(source2) = grid[next_coords].content {
+                    if let Some(&CharData::Extension(source2)) = grid.get(next_coords).map(|cell| &cell.content) {
                         if source2 != source { self.coords = source2; return; }
                         else { coords = next_coords; }
                     } else { self.coords = next_coords; return; }

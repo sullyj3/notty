@@ -20,7 +20,6 @@ use std::sync::atomic::Ordering::Relaxed;
 mod char_grid;
 mod screen;
 mod input;
-mod window;
 
 use Command;
 use datatypes::{InputSettings, Key};
@@ -28,7 +27,6 @@ use datatypes::{InputSettings, Key};
 pub use self::char_grid::*;
 pub use self::input::Tty;
 pub use self::screen::{Screen, Cells, Panels};
-pub use self::window::Window;
 
 use self::input::Input;
 use cfg::{TAB_STOP, SCROLLBACK};

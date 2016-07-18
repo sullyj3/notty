@@ -18,9 +18,14 @@ use std::sync::Arc;
 use mime::Mime;
 
 use datatypes::{Coords, MediaPosition};
-use terminal::{UseStyles, Styles};
+use terminal::{UseStyles, Styles, DEFAULT_STYLES};
 
 use self::CharData::*;
+
+pub const EMPTY_CELL: CharCell = CharCell {
+    styles: DEFAULT_STYLES,
+    content: CharData::Empty,
+};
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct CharCell {

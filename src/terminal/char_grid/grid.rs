@@ -17,7 +17,6 @@ use std::cmp;
 use std::collections::VecDeque;
 use std::iter;
 use std::mem;
-use std::ops::{Index, IndexMut};
 
 use datatypes::{Coords, Direction, Region};
 
@@ -31,39 +30,37 @@ pub struct Grid<T> {
 
 impl<T: Clone + Default> Grid<T> {
 
-    pub fn new(width: usize, height: usize) -> Grid<T> {
-        Grid::constructor(width, height, Some(0), Some(0))
+    pub fn with_x_cap(max_x: usize) -> Grid<T> {
+        Grid::constructor(Some(max_x), None)
     }
 
-    pub fn with_x_cap(width: usize, height: usize, max_x: usize) -> Grid<T> {
-        Grid::constructor(width, height, Some(max_x), Some(0))
+    pub fn with_y_cap(max_y: usize) -> Grid<T> {
+        Grid::constructor(None, Some(max_y))
     }
 
-    pub fn with_y_cap(width: usize, height: usize, max_y: usize) -> Grid<T> {
-        Grid::constructor(width, height, Some(0), Some(max_y))
+    pub fn with_x_y_caps(max_x: usize, max_y: usize) -> Grid<T> {
+        Grid::constructor(Some(max_x), Some(max_y))
     }
 
-    pub fn with_x_y_caps(width: usize, height: usize, max_x: usize, max_y: usize) -> Grid<T> {
-        Grid::constructor(width, height, Some(max_x), Some(max_y))
+    pub fn with_infinite_scroll() -> Grid<T> {
+        Grid::constructor(None, None)
     }
 
-    pub fn with_infinite_scroll(width: usize, height: usize) -> Grid<T> {
-        Grid::constructor(width, height, None, None)
-    }
-
-    fn constructor(w: usize, h: usize, max_x: Option<usize>, max_y: Option<usize>)
+    fn constructor(max_x: Option<usize>, max_y: Option<usize>)
             -> Grid<T> {
         Grid {
-            width: w,
-            height: h,
-            data: iter::repeat(T::default()).take(w * h).collect(),
-            rem_x: max_x.map(|x| x.saturating_sub(w)),
-            rem_y: max_y.map(|y| y.saturating_sub(h)),
+            width: 0,
+            height: 0,
+            data: VecDeque::new(),
+            rem_x: max_x,
+            rem_y: max_y,
         }
     }
 
-    pub fn bounds(&self) -> Region {
-        Region::new(0, 0, self.width as u32, self.height as u32)
+    pub fn bounds(&self) -> Option<Region> {
+        if self.width > 0 && self.height > 0 {
+            Some(Region::new(0, 0, self.width as u32, self.height as u32))
+        } else { None }
     }
 
     pub fn range_inclusive(&self, start: Coords, end: Coords)
@@ -76,6 +73,18 @@ impl<T: Clone + Default> Grid<T> {
         let end = end.x as usize + end.y as usize * self.width;
         assert!(end >= start, "range must be ascending");
         self.into_iter().skip(start).take(end - start + 1)
+    }
+
+    // Guarantee that this grid can grow to the given width.
+    pub fn guarantee_width(&mut self, width: usize) {
+        let new_rem = self.width.saturating_sub(width);
+        self.rem_x.as_mut().map(|rem| *rem = cmp::max(*rem, new_rem));
+    }
+
+    // Guarantee that this grid can grow to the given height.
+    pub fn guarantee_height(&mut self, height: usize) {
+        let new_rem = self.height.saturating_sub(height);
+        self.rem_y.as_mut().map(|rem| *rem = cmp::max(*rem, new_rem));
     }
 
     pub fn add_to_top(&mut self, data: Vec<T>) {
@@ -173,7 +182,9 @@ impl<T: Clone + Default> Grid<T> {
     }
 
     pub fn moveover(&mut self, from: Coords, to: Coords) {
-        self[to] = mem::replace(&mut self[from], T::default());
+        if let Some(from) = self.get_mut(from).map(|cell| mem::replace(cell, T::default())) {
+            self.get_mut(to).map(|to| *to = from);
+        }
     }
 
     fn extend_up(&mut self, n: usize) {
@@ -268,8 +279,41 @@ impl<T: Clone + Default> Grid<T> {
         }
     }
 
+    pub fn fill_to_width(&mut self, width: usize) {
+        let extension = width.saturating_sub(self.width);
+        self.extend_right(extension);
+    }
+
+    pub fn fill_to_height(&mut self, height: usize) {
+        let extension = height.saturating_sub(self.height);
+        self.extend_down(extension);
+    }
+
+    pub fn write_at(&mut self, coords: Coords, data: T) {
+        self.fill_to_width(coords.x as usize + 1);
+        self.fill_to_height(coords.y as usize + 1);
+        self.data[linearize(self.width, coords)] = data;
+    }
+
+    pub fn get(&self, coords: Coords) -> Option<&T> {
+        self.bounds().and_then(move |bounds| if bounds.contains(coords) { 
+            Some(&self.data[linearize(self.width, coords)])
+        } else { None })
+    }
+
+    pub fn get_mut(&mut self, coords: Coords) -> Option<&mut T> {
+        self.bounds().and_then(move |bounds| if bounds.contains(coords) { 
+            Some(&mut self.data[linearize(self.width, coords)])
+        } else { None })
+    }
+
 }
 
+fn linearize(width: usize, Coords { x, y }: Coords) -> usize {
+    y as usize * width + x as usize
+}
+
+/*
 impl<T> Index<Coords> for Grid<T> {
     type Output = T;
     fn index(&self, idx: Coords) -> &T {
@@ -286,6 +330,7 @@ impl<T> IndexMut<Coords> for Grid<T> {
         &mut self.data[(idx.y as usize * self.width) + idx.x as usize]
     }
 }
+*/
 
 impl<'a, T> IntoIterator for &'a Grid<T> {
     type IntoIter = <&'a VecDeque<T> as IntoIterator>::IntoIter;
