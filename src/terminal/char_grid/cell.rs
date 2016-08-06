@@ -20,21 +20,84 @@ use mime::Mime;
 use datatypes::{Coords, MediaPosition};
 use terminal::{UseStyles, Styles, DEFAULT_STYLES};
 
-use self::CharData::*;
+use self::CellData::*;
 
 pub const EMPTY_CELL: CharCell = CharCell {
     styles: DEFAULT_STYLES,
-    content: CharData::Empty,
+    content: CellData::Empty,
 };
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct CharCell {
     pub styles: UseStyles,
-    pub content: CharData,
+    pub content: CellData,
+}
+
+impl CharCell {
+
+    pub fn mod_content(&mut self, modifier: CellModifier, coords: Coords) {
+        match modifier {
+            CellModifier::Char(c)                       => self.content = Char(c),
+            CellModifier::Extension(coords)             => self.content = Extension(coords),
+            CellModifier::Image(data, mime, pos, w, h)  => {
+                self.content = Image {
+                    data: Arc::new(ImageData { 
+                        data: data,
+                        coords: coords,
+                    }),
+                    mime: mime,
+                    pos: pos,
+                    width: w,
+                    height: h,
+                }
+            }
+            CellModifier::ChExtend(c_extender)          => {
+                if let Grapheme(ref mut s) = self.content {
+                    s.push(c_extender);
+                } else if let Char(c) = self.content {
+                    self.content = Grapheme(format!("{}{}", c, c_extender));
+                }
+            }
+        }
+    }
+
+    pub fn is_extension(&self) -> bool {
+        if let CellData::Extension(_) = self.content { true } else { false }
+    }
+
+    pub fn repr(&self) -> String {
+        match self.content {
+            Char(c)         => c.to_string(),
+            Grapheme(ref s) => s.clone(),
+            Image { .. }    => String::from("IMG"),
+            Empty           => String::new(),
+            Extension(_)    => String::from("EXT"),
+        }
+    }
+
+}
+
+impl Default for CharCell {
+    fn default() -> CharCell {
+        CharCell {
+            content: Empty,
+            styles: UseStyles::Custom(Styles::new()),
+        }
+    }
+}
+
+impl ToString for CharCell {
+    fn to_string(&self) -> String {
+        match self.content {
+            Char(c)         => c.to_string(),
+            Grapheme(ref s) => s.clone(),
+            _               => String::new()
+        }
+    }
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum CharData {
+pub enum CellData {
     Empty,
     Char(char),
     Grapheme(String),
@@ -48,112 +111,26 @@ pub enum CharData {
     }
 }
 
+impl CellData {
+    pub fn extended_by(&self, extension: char) -> Option<CellData> {
+        match *self {
+            CellData::Char(c)           => Some(CellData::Grapheme(format!("{}{}", c, extension))),
+            CellData::Grapheme(ref s)   => Some(CellData::Grapheme(format!("{}{}", s, extension))),
+            _                           => None,
+        }
+    }
+}
+
 #[derive(Eq, PartialEq, Hash, Debug)]
 pub struct ImageData {
     pub data: Vec<u8>,
     coords: Coords,
 }
 
-impl CharCell {
-
-    pub fn new(styles: UseStyles) -> CharCell {
-        CharCell {
-            styles: styles,
-            content: Empty,
-        }
-    }
-
-    pub fn character(ch: char, styles: UseStyles) -> CharCell {
-        CharCell {
-            styles: styles,
-            content: Char(ch)
-        }
-    }
-
-    pub fn grapheme(grapheme: String, styles: UseStyles) -> CharCell {
-        CharCell {
-            styles: styles,
-            content: Grapheme(grapheme)
-        }
-    }
-
-    pub fn image(data: Vec<u8>,
-                 coords: Coords,
-                 mime: Mime,
-                 pos: MediaPosition, 
-                 width: u32,
-                 height: u32,
-                 styles: UseStyles) -> CharCell {
-        CharCell {
-            styles: styles,
-            content: Image {
-                data: Arc::new(ImageData {
-                    data: data,
-                    coords: coords,
-                }),
-                mime: mime,
-                pos: pos,
-                width: width,
-                height: height
-            }
-        }
-    }
-
-    pub fn extension(coords: Coords, styles: UseStyles) -> CharCell {
-        CharCell {
-            styles: styles,
-            content: Extension(coords),
-        }
-    }
-
-    pub fn extend_by(&mut self, ext: char) -> bool {
-        match self.content {
-            Char(c)             => {
-                let mut string = c.to_string();
-                string.push(ext);
-                self.content = Grapheme(string);
-                true
-            }
-            Grapheme(ref mut s) => {
-                s.push(ext);
-                true
-            }
-            _                   => false
-        }
-    }
-
-    pub fn repr(&self) -> String {
-        match self.content {
-            Char(c)         => c.to_string(),
-            Grapheme(ref s) => s.clone(),
-            Image { .. }    => String::from("IMG"),
-            Empty           => String::new(),
-            Extension(_)    => String::from("EXT"),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.content == Empty
-    }
-
-    pub fn is_char_extension(&self) -> bool {
-        if let Extension(..) = self.content { true } else { false }
-    }
-
-}
-
-impl Default for CharCell {
-    fn default() -> CharCell {
-        CharCell::new(UseStyles::Custom(Styles::new()))
-    }
-}
-
-impl ToString for CharCell {
-    fn to_string(&self) -> String {
-        match self.content {
-            Char(c)         => c.to_string(),
-            Grapheme(ref s) => s.clone(),
-            _               => String::new()
-        }
-    }
+#[derive(PartialEq, Debug)]
+pub enum CellModifier {
+    Char(char),
+    ChExtend(char),
+    Extension(Coords),
+    Image(Vec<u8>, Mime, MediaPosition, u32, u32),
 }

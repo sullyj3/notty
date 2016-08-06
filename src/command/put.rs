@@ -18,20 +18,20 @@ use mime::Mime;
 use std::cell::RefCell;
 
 use command::prelude::*;
-use datatypes::{CellData, Coords, MediaPosition};
+use datatypes::{CharData, Coords, MediaPosition};
 use datatypes::Movement::Position;
 
-pub struct Put(RefCell<Option<CellData>>);
+pub struct Put(RefCell<Option<CharData>>);
 
 impl Put {
     pub fn new_char(ch: char) -> Put {
-        Put(RefCell::new(Some(CellData::Char(ch))))
+        Put(RefCell::new(Some(CharData::Char(ch))))
     }
     pub fn new_extension(ch: char) -> Put {
-        Put(RefCell::new(Some(CellData::ExtensionChar(ch))))
+        Put(RefCell::new(Some(CharData::ExtensionChar(ch))))
     }
     pub fn new_image(data: Vec<u8>, mime: Mime, pos: MediaPosition, w: u32, h: u32) -> Put {
-        Put(RefCell::new(Some(CellData::Image {
+        Put(RefCell::new(Some(CharData::Image {
             pos: pos,
             width: w,
             height: h,
@@ -52,7 +52,7 @@ impl Command for Put {
 
     fn repr(&self) -> String {
         match *self.0.borrow() {
-            Some(CellData::Char(c)) | Some(CellData::ExtensionChar(c))
+            Some(CharData::Char(c)) | Some(CharData::ExtensionChar(c))
                                             => c.to_string(),
             _                               => String::from("PUT"),
         }
@@ -60,13 +60,13 @@ impl Command for Put {
 
 }
 
-pub struct PutAt(RefCell<Option<CellData>>, Coords);
+pub struct PutAt(RefCell<Option<CharData>>, Coords);
 
 impl PutAt {
 
     pub fn new_image(data: Vec<u8>, mime: Mime, pos: MediaPosition, w: u32, h: u32, at: Coords)
             -> PutAt {
-        PutAt(RefCell::new(Some(CellData::Image {
+        PutAt(RefCell::new(Some(CharData::Image {
             pos: pos,
             width: w,
             height: h,

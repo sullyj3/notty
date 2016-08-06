@@ -22,7 +22,7 @@ use glib::translate::ToGlibPtr;
 use itertools::Itertools;
 
 use notty::datatypes::Coords;
-use notty::terminal::{CharData, Terminal, ImageData};
+use notty::terminal::{CellData, Terminal, ImageData};
 
 use pangocairo::wrap::{PangoLayout, PangoAttrList};
 
@@ -82,20 +82,20 @@ impl Renderer {
                 if (Coords { x: x_pos as u32, y: y_pos as u32 } == terminal.cursor_position()) {
                     let cursor_style = terminal.cursor_styles();
                     match cell.content {
-                        CharData::Empty             => text.push_cursor(' ', style, cursor_style),
-                        CharData::Char(ch)          => text.push_cursor(ch, style, cursor_style),
-                        CharData::Grapheme(ref s)   => text.push_str_cursor(s, style, cursor_style),
-                        CharData::Extension(_)      => unreachable!(),
-                        CharData::Image { .. }      => continue,
+                        CellData::Empty             => text.push_cursor(' ', style, cursor_style),
+                        CellData::Char(ch)          => text.push_cursor(ch, style, cursor_style),
+                        CellData::Grapheme(ref s)   => text.push_str_cursor(s, style, cursor_style),
+                        CellData::Extension(_)      => unreachable!(),
+                        CellData::Image { .. }      => continue,
                     }
                     continue;
                 }
                 match cell.content {
-                    CharData::Empty             => text.push(' ', style),
-                    CharData::Char(ch)          => text.push(ch, style),
-                    CharData::Grapheme(ref s)   => text.push_str(s, style),
-                    CharData::Extension(_)      => { }
-                    CharData::Image { ref data, ref pos, ref width, ref height, .. } => {
+                    CellData::Empty             => text.push(' ', style),
+                    CellData::Char(ch)          => text.push(ch, style),
+                    CellData::Grapheme(ref s)   => text.push_str(s, style),
+                    CellData::Extension(_)      => { }
+                    CellData::Image { ref data, ref pos, ref width, ref height, .. } => {
                         let x_pix = self.x_pixels(x_pos as u32);
                         if (x_pos + *width as usize) < col_n {
                             text.draw(canvas);

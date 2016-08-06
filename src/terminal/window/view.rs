@@ -1,31 +1,33 @@
 use datatypes::{Coords, Region};
 
-use self::View::*;
+use self::Flow::*;
 
-pub struct Window {
+#[derive(Eq, PartialEq, Debug)]
+pub struct View {
     point: Coords,
     width: u32,
     height: u32,
-    view: View,
+    flow: Flow,
 }
 
-pub enum View {
+#[derive(Eq, PartialEq, Debug)]
+pub enum Flow {
     Moveable,
     Reflowable,
 }
 
-impl Window {
-    pub fn new(point: Coords, width: u32, height: u32, view: View) -> Window {
-        Window {
+impl View {
+    pub fn new(point: Coords, width: u32, height: u32, flow: Flow) -> View {
+        View {
             point: point,
             width: width,
             height: height,
-            view: view,
+            flow: flow,
         }
     }
 
     pub fn translate(&self, Coords { x, y }: Coords) -> Coords {
-        match self.view {
+        match self.flow {
             Moveable    => {
                 let coords = Coords { x: x + self.point.x, y: y + self.point.y };
                 assert!(self.bounds().contains(coords));
@@ -35,8 +37,16 @@ impl Window {
         }
     }
 
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
     pub fn bounds(&self) -> Region {
-        match self.view {
+        match self.flow {
             Moveable    => Region {
                 left: self.point.x,
                 top: self.point.y,
@@ -53,5 +63,17 @@ impl Window {
 
     pub fn resize_height(&mut self, height: u32) {
         self.height = height;
+    }
+
+    pub fn keep_cursor_within(&mut self, coords: Coords) {
+        match self.flow {
+            Moveable    => {
+                let new_bounds = self.bounds().move_to_contain(coords);
+                if new_bounds != self.bounds() {
+                    self.point = Coords { x: new_bounds.left, y: new_bounds.top };
+                }
+            }
+            Reflowable  => unimplemented!()
+        }
     }
 }

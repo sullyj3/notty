@@ -64,7 +64,7 @@ pub mod args {
 
 /// Data that could be placed in a character cell.
 #[derive(Clone)]
-pub enum CellData {
+pub enum CharData {
     /// A single unicode code point.
     Char(char), 
     /// An extension code point such as U+301. Normally, writing this to the screen does not
