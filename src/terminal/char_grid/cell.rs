@@ -34,33 +34,6 @@ pub struct CharCell {
 }
 
 impl CharCell {
-
-    pub fn mod_content(&mut self, modifier: CellModifier, coords: Coords) {
-        match modifier {
-            CellModifier::Char(c)                       => self.content = Char(c),
-            CellModifier::Extension(coords)             => self.content = Extension(coords),
-            CellModifier::Image(data, mime, pos, w, h)  => {
-                self.content = Image {
-                    data: Arc::new(ImageData { 
-                        data: data,
-                        coords: coords,
-                    }),
-                    mime: mime,
-                    pos: pos,
-                    width: w,
-                    height: h,
-                }
-            }
-            CellModifier::ChExtend(c_extender)          => {
-                if let Grapheme(ref mut s) = self.content {
-                    s.push(c_extender);
-                } else if let Char(c) = self.content {
-                    self.content = Grapheme(format!("{}{}", c, c_extender));
-                }
-            }
-        }
-    }
-
     pub fn is_extension(&self) -> bool {
         if let CellData::Extension(_) = self.content { true } else { false }
     }
@@ -111,26 +84,8 @@ pub enum CellData {
     }
 }
 
-impl CellData {
-    pub fn extended_by(&self, extension: char) -> Option<CellData> {
-        match *self {
-            CellData::Char(c)           => Some(CellData::Grapheme(format!("{}{}", c, extension))),
-            CellData::Grapheme(ref s)   => Some(CellData::Grapheme(format!("{}{}", s, extension))),
-            _                           => None,
-        }
-    }
-}
-
 #[derive(Eq, PartialEq, Hash, Debug)]
 pub struct ImageData {
     pub data: Vec<u8>,
-    coords: Coords,
-}
-
-#[derive(PartialEq, Debug)]
-pub enum CellModifier {
-    Char(char),
-    ChExtend(char),
-    Extension(Coords),
-    Image(Vec<u8>, Mime, MediaPosition, u32, u32),
+    pub coords: Coords,
 }

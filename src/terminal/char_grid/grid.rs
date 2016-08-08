@@ -26,7 +26,7 @@ pub struct Grid<T> {
     rem_y: Option<usize>,
 }
 
-impl<T: Clone + Default> Grid<T> {
+impl<T> Grid<T> {
     pub fn with_x_cap(max_x: usize) -> Grid<T> {
         Grid::new(Some(max_x), None)
     }
@@ -84,24 +84,6 @@ impl<T: Clone + Default> Grid<T> {
         }
     }
 
-    pub fn scroll(&mut self, n: usize, direction: Direction) {
-        use datatypes::Direction::*;
-        match direction {
-            Up if self.rem_y != Some(0)     => self.extend_up(n),
-            Up if n >= self.height          => self.data.clear(),
-            Up                              => self.shift_up(n),
-            Down if self.rem_y != Some(0)   => self.extend_down(n),
-            Down if n >= self.height        => self.data.clear(),
-            Down                            => self.shift_down(n),
-            Left if self.rem_x != Some(0)   => self.extend_left(n),
-            Left if n >= self.width         => self.data.clear(),
-            Left                            => self.shift_left(n),
-            Right if self.rem_x != Some(0)  => self.extend_right(n),
-            Right if n >= self.width        => self.data.clear(),
-            Right                           => self.shift_right(n),
-        }
-    }
-
     pub fn get(&self, coords: Coords) -> Option<&T> {
         self.bounds().and_then(move |bounds| if bounds.contains(coords) { 
             Some(&self.data[linearize(self.width, coords)])
@@ -117,6 +99,26 @@ impl<T: Clone + Default> Grid<T> {
     pub fn set(&mut self, coords: Coords, data: T) {
         if let Some(location) = self.get_mut(coords) {
             *location = data;
+        }
+    }
+}
+
+impl<T: Default> Grid<T> {
+    pub fn scroll(&mut self, n: usize, direction: Direction) {
+        use datatypes::Direction::*;
+        match direction {
+            Up if self.rem_y != Some(0)     => self.extend_up(n),
+            Up if n >= self.height          => self.data.clear(),
+            Up                              => self.shift_up(n),
+            Down if self.rem_y != Some(0)   => self.extend_down(n),
+            Down if n >= self.height        => self.data.clear(),
+            Down                            => self.shift_down(n),
+            Left if self.rem_x != Some(0)   => self.extend_left(n),
+            Left if n >= self.width         => self.data.clear(),
+            Left                            => self.shift_left(n),
+            Right if self.rem_x != Some(0)  => self.extend_right(n),
+            Right if n >= self.width        => self.data.clear(),
+            Right                           => self.shift_right(n),
         }
     }
 

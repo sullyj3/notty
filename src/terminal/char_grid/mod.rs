@@ -5,31 +5,30 @@ use std::ops::Index;
 use std::sync::atomic::Ordering::Relaxed;
 
 use cfg::SCROLLBACK;
-use datatypes::{CharData, Coords, Direction, Region, Style};
+use datatypes::{Coords, Direction, Style};
 use terminal::{UseStyles, DEFAULT_STYLES};
 
 mod cell;
+mod data;
 mod grid;
 mod tooltip;
-mod writer;
 
 use self::cell::EMPTY_CELL;
 use self::grid::Grid as DataGrid;
-use self::writer::Writer;
 
-pub use self::cell::{CharCell, CellData, ImageData, CellModifier};
+pub use self::cell::{CharCell, CellData, ImageData};
+pub use self::data::*;
 pub use self::tooltip::Tooltip;
 
 const DEFAULT_CELL: &'static CharCell = &EMPTY_CELL;
 
 pub trait Grid: Index<Coords> {
-    type Data;
     fn new(width: u32, height: u32, retain_offscreen_state: bool) -> Self;
 
     fn resize_width(&mut self, width: u32);
     fn resize_height(&mut self, height: u32);
 
-    fn write(&mut self, coords: Coords, data: Self::Data, styles: UseStyles) -> Coords;
+    fn write<T: CharData>(&mut self, coords: Coords, data: &T, styles: UseStyles) -> Coords;
     fn set_style(&mut self, coords: Coords, style: Style);
     fn reset_style(&mut self, coords: Coords);
     fn erase(&mut self, coords: Coords);
@@ -42,8 +41,6 @@ pub trait Grid: Index<Coords> {
 }
 
 impl Grid for CharGrid {
-    type Data = CharData;
-
     fn new(width: u32, height: u32, retain_offscreen_state: bool) -> CharGrid {
         let grid = match (retain_offscreen_state, SCROLLBACK.load(Relaxed)) {
             (false, _)          => DataGrid::with_x_y_caps(width as usize, height as usize),
@@ -64,8 +61,8 @@ impl Grid for CharGrid {
         self.grid.guarantee_height(height as usize);
     }
 
-    fn write(&mut self, coords: Coords, data: CharData, styles: UseStyles) -> Coords {
-        Writer::new(data, coords, &self).write(&mut self.grid, styles)
+    fn write<T: CharData>(&mut self, coords: Coords, data: &T, styles: UseStyles) -> Coords {
+        data.write(coords, styles, &mut self.grid)
     }
 
     fn set_style(&mut self, coords: Coords, style: Style) {
@@ -124,7 +121,6 @@ pub struct CharGrid {
 }
 
 impl CharGrid {
-
     pub fn add_tooltip(&mut self, coords: Coords, tooltip: String) {
         self.tooltips.insert(coords, Tooltip::Basic(tooltip));
     }
@@ -139,24 +135,6 @@ impl CharGrid {
 
     pub fn scroll(&mut self, dir: Direction, n: u32) {
         self.grid.scroll(n as usize, dir)
-    }
-
-    fn best_fit_for_region(&self, region: Region) -> Coords {
-        let x_offset = self.grid.max_width().map_or(0, |width| {
-            region.right.saturating_sub(width as u32)
-        });
-        let y_offset = self.grid.max_width().map_or(0, |height| {
-            region.bottom.saturating_sub(height as u32)
-        });
-        Coords { x: region.left - x_offset, y: region.top - y_offset }
-    }
-
-    fn coords_before(&self, Coords { x, y }: Coords) -> Coords {
-        match (x == 0, y == 0) {
-            (true, true)    => Coords { x: x, y: y },
-            (true, _)       => Coords { x: self.grid.width as u32 - 1, y: y - 1},
-            (_, _)          => Coords { x: x - 1, y: y },
-        }
     }
 }
 

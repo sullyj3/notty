@@ -17,7 +17,7 @@ use std::ops::{Index, Deref, DerefMut};
 
 use datatypes::{Area, Coords, CoordsIter, Direction, Movement, Style, move_within};
 
-use terminal::{CharGrid, Grid, Styles, UseStyles, Tooltip};
+use terminal::{CharData, CharGrid, Grid, Styles, UseStyles, Tooltip};
 
 mod cursor;
 mod view;
@@ -59,7 +59,7 @@ impl<T: Grid> Window<T> {
         self.view.resize_height(height);
     }
 
-    pub fn write(&mut self, data: T::Data) {
+    pub fn write<C: CharData>(&mut self, data: &C) {
         self.cursor.coords = self.grid.write(self.cursor.coords, data, self.cursor.text_style);
         self.move_cursor(Movement::To(Direction::Right, 1, true));
     }
